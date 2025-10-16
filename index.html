@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Leaflet -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- MarkerCluster -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+/>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<style>
+  html, body, #map {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    direction: rtl;
+  }
+
+  /* Cluster colors */
+  .marker-cluster-small {
+    background-color: rgba(180, 0, 0, 0.8);
+    color: #fff;
+    border: 2px solid #fff;
+  }
+  .marker-cluster-medium {
+    background-color: rgba(120, 0, 0, 0.85);
+    color: #fff;
+    border: 2px solid #fff;
+  }
+  .marker-cluster-large {
+    background-color: rgba(50, 0, 0, 0.9);
+    color: #fff;
+    border: 2px solid #fff;
+  }
+
+  /* Tooltip styling */
+  .leaflet-tooltip {
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    text-align: right;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<script>
+  // === Initialize map ===
+  const map = L.map("map", {
+    center: [24.7136, 46.6753], // Saudi Arabia center
+    zoom: 6,
+    zoomControl: true,
+  });
+
+  // Background layer
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+  }).addTo(map);
+
+  // Cluster layer
+  const markerLayer = L.markerClusterGroup();
+  map.addLayer(markerLayer);
+
+  // Store marker data
+  const markerDataMap = new Map();
+
+  // === Render Markers Function ===
+  function renderPoints(latArr, lonArr, regionArr, accessArr, satArr) {
+    markerLayer.clearLayers();
+    markerDataMap.clear();
+
+    for (let i = 0; i < latArr.length; i++) {
+      const lat = parseFloat(latArr[i]);
+      const lon = parseFloat(lonArr[i]);
+      const region = regionArr?.[i] || "غير معروف";
+      const access = accessArr?.[i] || "N/A";
+      const sat = satArr?.[i] || "N/A";
+
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const markerId = `${lat}_${lon}`;
+
+        const marker = L.circleMarker([lat, lon], {
+          radius: 8,
+          color: "#FF3333",
+          fillColor: "#FF0000",
+          fillOpacity: 0.9,
+          weight: 1.2,
+        });
+
+        // === Tooltip Content ===
+        const tooltipHTML = `
+          <b>${region}</b><br>
+          إمكانية الوصول للأماكن العامة: ${access}<br>
+          رضا السكان: ${sat}
+        `;
+
+        marker.bindTooltip(tooltipHTML, {
+          permanent: false,
+          direction: "top",
+          opacity: 0.9,
+        });
+
+        // Store for click event
+        markerDataMap.set(markerId, { region, lat, lon, access, sat });
+
+        // Click event: send to Grafana parent
+        marker.on("click", () => {
+          const data = markerDataMap.get(markerId);
+          window.parent.postMessage(
+            { type: "mapClick", ...data },
+            "*"
+          );
+        });
+
+        markerLayer.addLayer(marker);
+      }
+    }
+
+    // Fit map to markers
+    if (markerLayer.getLayers().length > 0) {
+      map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
+    }
+  }
+
+  // === Load data via URL parameters ===
+  const params = new URLSearchParams(window.location.search);
+  const lats = params.get("lat")?.split(",") || [];
+  const lons = params.get("lon")?.split(",") || [];
+  const regions = params.get("region")?.split(",") || [];
+  const access = params.get("access")?.split(",") || [];
+  const satisfaction = params.get("satisfaction")?.split(",") || [];
+
+  if (lats.length > 0 && lons.length > 0) {
+    renderPoints(lats, lons, regions, access, satisfaction);
+  }
+
+  // === Listen for Grafana postMessage ===
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || !data.lat || !data.lon) return;
+    renderPoints(data.lat, data.lon, data.region, data.access, data.satisfaction);
+  });
+</script>
+</body>
+</html>
