@@ -1,16 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <!-- MarkerCluster -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+/>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <style>
@@ -21,7 +30,7 @@
     padding: 0;
   }
 
-  /* Dark Cluster Colors */
+  /* Cluster color */
   .marker-cluster-small {
     background-color: rgba(180, 0, 0, 0.8);
     color: #fff;
@@ -43,8 +52,10 @@
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 12px;
+    padding: 6px 10px;
+    font-size: 13px;
+    direction: rtl;
+    text-align: right;
   }
 </style>
 </head>
@@ -52,103 +63,99 @@
 <div id="map"></div>
 
 <script>
-// === Initialize map ===
-const map = L.map("map", {
-  center: [24.7136, 46.6753],
-  zoom: 6,
-  zoomControl: true,
-  attributionControl: false
-});
+  // === Initialize Map ===
+  const map = L.map("map", {
+    center: [24.7136, 46.6753],
+    zoom: 6,
+    zoomControl: true,
+    attributionControl: false,
+  });
 
-L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
-  maxZoom: 12,
-  minZoom: 3
-}).addTo(map);
+  L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    maxZoom: 12,
+    minZoom: 3,
+  }).addTo(map);
 
-let markerLayer = L.markerClusterGroup();
-map.addLayer(markerLayer);
-const markerDataMap = new Map();
+  let markerLayer = L.markerClusterGroup();
+  map.addLayer(markerLayer);
 
-// === Render Points Function ===
-function renderPoints(regionArr, latArr, lonArr, residentsArr, accessibilityArr) {
-  markerLayer.clearLayers();
-  markerDataMap.clear();
+  // === Render Points ===
+  function renderPoints(data) {
+    markerLayer.clearLayers();
 
-  for (let i = 0; i < regionArr.length; i++) {
-    const region = decodeURIComponent(regionArr[i] || "غير معروف");
-    const lat = parseFloat(latArr[i]);
-    const lon = parseFloat(lonArr[i]);
-    const residents = residentsArr?.[i] || "N/A";
-    const accessibility = accessibilityArr?.[i] || "N/A";
+    data.forEach((row) => {
+      const region = row["اسم الحي"] || "غير معروف";
+      const lat = parseFloat(row["longitude"]);  // swapped!
+      const lon = parseFloat(row["latitude"]);
+      const access = row["امكانية الوصول الي الاماكن العامة في نطاق 800 متر"] || "0%";
+      const satisfaction = row["رضا_السكان عن الخدمات البلدية"] || "0%";
 
-    if (!isNaN(lat) && !isNaN(lon)) {
-      const markerId = `${lat}_${lon}`;
+      if (!isNaN(lat) && !isNaN(lon)) {
+        const satVal = parseFloat(satisfaction.replace("%", "")) || 0;
 
-      const marker = L.circleMarker([lat, lon], {
-        radius: 10,
-        color: "#FF3333",
-        fillColor: "#FF0000",
-        fillOpacity: 0.9,
-        weight: 1.2
-      });
+        const marker = L.circleMarker([lat, lon], {
+          radius: Math.min(20, 8 + satVal / 10),
+          color: "#FF3333",
+          fillColor: "#FF0000",
+          fillOpacity: 0.85,
+          weight: 1.5,
+        });
 
-      marker.bindTooltip(
-        `<b>${region}</b><br>
-        رضا السكان: ${residents}<br>
-        إمكانية الوصول: ${accessibility}`,
-        { direction: "top", opacity: 0.9 }
-      );
+        marker.bindTooltip(
+          `<b>${region}</b><br>
+           إمكانية الوصول: ${access}<br>
+           رضا السكان: ${satisfaction}`,
+          { direction: "top" }
+        );
 
-      markerDataMap.set(markerId, {
-        region, lat, long: lon, residents, accessibility
-      });
+        marker.on("click", function () {
+          window.parent.postMessage(
+            {
+              type: "mapClick",
+              region: region,
+              latitude: lat,
+              longitude: lon,
+              access: access,
+              satisfaction: satisfaction,
+            },
+            "*"
+          );
+        });
 
-      marker.on("click", function() {
-        const data = markerDataMap.get(markerId);
-        window.parent.postMessage({
-          type: "mapClick",
-          region: data.region,
-          lat: data.lat,
-          long: data.long,
-          residents: data.residents,
-          accessibility: data.accessibility
-        }, "*");
-      });
+        markerLayer.addLayer(marker);
+      }
+    });
 
-      markerLayer.addLayer(marker);
+    if (markerLayer.getLayers().length > 0) {
+      map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
     }
   }
 
-  if (markerLayer.getLayers().length > 0) {
-    map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
-  }
-}
+  // === Get data from Grafana ===
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || !Array.isArray(data)) return;
+    renderPoints(data);
+  });
 
-// === Listen for Grafana messages ===
-window.addEventListener("message", (event) => {
-  const data = event.data;
-  if (!data || !data.lat || !data.long) return;
-
-  renderPoints(
-    data.region || [],
-    data.lat || [],
-    data.long || [],
-    data.residents || [],
-    data.accessibility || []
-  );
-});
-
-// === Support URL params (optional) ===
-const params = new URLSearchParams(window.location.search);
-const regions = params.get("region")?.split(",") || [];
-const lats = params.get("lat")?.split(",") || [];
-const lons = params.get("long")?.split(",") || [];
-const residents = params.get("residents")?.split(",") || [];
-const accessibility = params.get("accessibility")?.split(",") || [];
-
-if (regions.length && lats.length && lons.length) {
-  renderPoints(regions, lats, lons, residents, accessibility);
-}
+  // === Test Example (for standalone run) ===
+  const testData = [
+    {
+      "اسم الحي": "حي العليا",
+      "longitude": "24.7136",
+      "latitude": "46.6753",
+      "امكانية الوصول الي الاماكن العامة في نطاق 800 متر": "85%",
+      "رضا_السكان عن الخدمات البلدية": "90%",
+    },
+    {
+      "اسم الحي": "حي المروج",
+      "longitude": "24.7762",
+      "latitude": "46.7008",
+      "امكانية الوصول الي الاماكن العامة في نطاق 800 متر": "70%",
+      "رضا_السكان عن الخدمات البلدية": "75%",
+    },
+  ];
+  renderPoints(testData);
 </script>
 </body>
 </html>
