@@ -4,14 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<!-- Leaflet -->
+<!-- ✅ Leaflet -->
 <link
   rel="stylesheet"
   href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
 />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- MarkerCluster -->
+<!-- ✅ MarkerCluster -->
 <link
   rel="stylesheet"
   href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
@@ -30,7 +30,7 @@
     padding: 0;
   }
 
-  /* === Custom Cluster Colors === */
+  /* === Cluster Colors === */
   .marker-cluster-small {
     background-color: rgba(180, 0, 0, 0.8);
     color: #fff;
@@ -77,28 +77,27 @@
     minZoom: 3,
   }).addTo(map);
 
-  // === Marker Cluster Config ===
+  // === Marker Cluster Layer ===
   let markerLayer = L.markerClusterGroup({
-    maxClusterRadius: 20,        // smaller value = less clustering
-    disableClusteringAtZoom: 9,  // show individual points when zoomed in
+    maxClusterRadius: 20,
+    disableClusteringAtZoom: 9,
     spiderfyOnMaxZoom: true,
-    showCoverageOnHover: false
+    showCoverageOnHover: false,
   });
   map.addLayer(markerLayer);
 
-  // === Render Points ===
+  // === Render Points Function ===
   function renderPoints(data) {
     markerLayer.clearLayers();
 
     data.forEach((row) => {
-      const region = row["اسم الحي"] || "غير معروف";
-      const lat = parseFloat(row["longitude"]);  // swapped intentionally per your SQL
-      const lon = parseFloat(row["latitude"]);
-      const access = row["امكانية الوصول الي الاماكن العامة في نطاق 800 متر"] || "0%";
-      const satisfaction = row["رضا_السكان عن الخدمات البلدية"] || "0%";
+      const region = decodeURIComponent(row.name || "غير معروف");
+      const lat = parseFloat(row.lat);
+      const lon = parseFloat(row.long);
+      const access = row.access || "0%";
+      const satisfaction = row.satisfaction || "0%";
 
       if (!isNaN(lat) && !isNaN(lon)) {
-        // Slight jitter to separate overlapping markers
         const jitterLat = lat + (Math.random() - 0.5) * 0.002;
         const jitterLon = lon + (Math.random() - 0.5) * 0.002;
 
@@ -137,8 +136,8 @@
       }
     });
 
-    console.log("Total rows received:", data.length);
-    console.log("Markers rendered:", markerLayer.getLayers().length);
+    console.log("✅ Total rows received:", data.length);
+    console.log("✅ Markers rendered:", markerLayer.getLayers().length);
 
     if (markerLayer.getLayers().length > 0) {
       map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
@@ -146,11 +145,16 @@
     }
   }
 
-  // === Grafana PostMessage Listener ===
+  // === Listen for Messages from Grafana ===
   window.addEventListener("message", (event) => {
-    const data = event.data;
-    if (!data || !Array.isArray(data)) return;
-    renderPoints(data);
+    const payload = event.data;
+    if (!payload) return;
+
+    // ✅ Handle Grafana data
+    if (payload.type === "habData" && Array.isArray(payload.data)) {
+      console.log("📩 Received data from Grafana:", payload.data.length, "records");
+      renderPoints(payload.data);
+    }
   });
 </script>
 </body>
