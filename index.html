@@ -1,25 +1,16 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <!-- Leaflet -->
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <!-- MarkerCluster -->
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
-/>
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
-/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <style>
@@ -28,10 +19,9 @@
     width: 100%;
     margin: 0;
     padding: 0;
-    direction: rtl;
   }
 
-  /* Cluster colors */
+  /* Dark Cluster Colors */
   .marker-cluster-small {
     background-color: rgba(180, 0, 0, 0.8);
     color: #fff;
@@ -48,16 +38,13 @@
     border: 2px solid #fff;
   }
 
-  /* Tooltip styling */
   .leaflet-tooltip {
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.8);
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 13px;
-    text-align: right;
-    line-height: 1.4;
+    padding: 4px 8px;
+    font-size: 12px;
   }
 </style>
 </head>
@@ -65,101 +52,103 @@
 <div id="map"></div>
 
 <script>
-  // === Initialize map ===
-  const map = L.map("map", {
-    center: [24.7136, 46.6753], // Saudi Arabia center
-    zoom: 6,
-    zoomControl: true,
-  });
+// === Initialize map ===
+const map = L.map("map", {
+  center: [24.7136, 46.6753],
+  zoom: 6,
+  zoomControl: true,
+  attributionControl: false
+});
 
-  // Background layer
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-  }).addTo(map);
+L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  maxZoom: 12,
+  minZoom: 3
+}).addTo(map);
 
-  // Cluster layer
-  const markerLayer = L.markerClusterGroup();
-  map.addLayer(markerLayer);
+let markerLayer = L.markerClusterGroup();
+map.addLayer(markerLayer);
+const markerDataMap = new Map();
 
-  // Store marker data
-  const markerDataMap = new Map();
+// === Render Points Function ===
+function renderPoints(regionArr, latArr, lonArr, residentsArr, accessibilityArr) {
+  markerLayer.clearLayers();
+  markerDataMap.clear();
 
-  // === Render Markers Function ===
-  function renderPoints(latArr, lonArr, regionArr, accessArr, satArr) {
-    markerLayer.clearLayers();
-    markerDataMap.clear();
+  for (let i = 0; i < regionArr.length; i++) {
+    const region = decodeURIComponent(regionArr[i] || "غير معروف");
+    const lat = parseFloat(latArr[i]);
+    const lon = parseFloat(lonArr[i]);
+    const residents = residentsArr?.[i] || "N/A";
+    const accessibility = accessibilityArr?.[i] || "N/A";
 
-    for (let i = 0; i < latArr.length; i++) {
-      const lat = parseFloat(latArr[i]);
-      const lon = parseFloat(lonArr[i]);
-      const region = regionArr?.[i] || "غير معروف";
-      const access = accessArr?.[i] || "N/A";
-      const sat = satArr?.[i] || "N/A";
+    if (!isNaN(lat) && !isNaN(lon)) {
+      const markerId = `${lat}_${lon}`;
 
-      if (!isNaN(lat) && !isNaN(lon)) {
-        const markerId = `${lat}_${lon}`;
+      const marker = L.circleMarker([lat, lon], {
+        radius: 10,
+        color: "#FF3333",
+        fillColor: "#FF0000",
+        fillOpacity: 0.9,
+        weight: 1.2
+      });
 
-        const marker = L.circleMarker([lat, lon], {
-          radius: 8,
-          color: "#FF3333",
-          fillColor: "#FF0000",
-          fillOpacity: 0.9,
-          weight: 1.2,
-        });
+      marker.bindTooltip(
+        `<b>${region}</b><br>
+        رضا السكان: ${residents}<br>
+        إمكانية الوصول: ${accessibility}`,
+        { direction: "top", opacity: 0.9 }
+      );
 
-        // === Tooltip Content ===
-        const tooltipHTML = `
-          <b>${region}</b><br>
-          إمكانية الوصول للأماكن العامة: ${access}<br>
-          رضا السكان: ${sat}
-        `;
+      markerDataMap.set(markerId, {
+        region, lat, long: lon, residents, accessibility
+      });
 
-        marker.bindTooltip(tooltipHTML, {
-          permanent: false,
-          direction: "top",
-          opacity: 0.9,
-        });
+      marker.on("click", function() {
+        const data = markerDataMap.get(markerId);
+        window.parent.postMessage({
+          type: "mapClick",
+          region: data.region,
+          lat: data.lat,
+          long: data.long,
+          residents: data.residents,
+          accessibility: data.accessibility
+        }, "*");
+      });
 
-        // Store for click event
-        markerDataMap.set(markerId, { region, lat, lon, access, sat });
-
-        // Click event: send to Grafana parent
-        marker.on("click", () => {
-          const data = markerDataMap.get(markerId);
-          window.parent.postMessage(
-            { type: "mapClick", ...data },
-            "*"
-          );
-        });
-
-        markerLayer.addLayer(marker);
-      }
-    }
-
-    // Fit map to markers
-    if (markerLayer.getLayers().length > 0) {
-      map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
+      markerLayer.addLayer(marker);
     }
   }
 
-  // === Load data via URL parameters ===
-  const params = new URLSearchParams(window.location.search);
-  const lats = params.get("lat")?.split(",") || [];
-  const lons = params.get("lon")?.split(",") || [];
-  const regions = params.get("region")?.split(",") || [];
-  const access = params.get("access")?.split(",") || [];
-  const satisfaction = params.get("satisfaction")?.split(",") || [];
-
-  if (lats.length > 0 && lons.length > 0) {
-    renderPoints(lats, lons, regions, access, satisfaction);
+  if (markerLayer.getLayers().length > 0) {
+    map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
   }
+}
 
-  // === Listen for Grafana postMessage ===
-  window.addEventListener("message", (event) => {
-    const data = event.data;
-    if (!data || !data.lat || !data.lon) return;
-    renderPoints(data.lat, data.lon, data.region, data.access, data.satisfaction);
-  });
+// === Listen for Grafana messages ===
+window.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || !data.lat || !data.long) return;
+
+  renderPoints(
+    data.region || [],
+    data.lat || [],
+    data.long || [],
+    data.residents || [],
+    data.accessibility || []
+  );
+});
+
+// === Support URL params (optional) ===
+const params = new URLSearchParams(window.location.search);
+const regions = params.get("region")?.split(",") || [];
+const lats = params.get("lat")?.split(",") || [];
+const lons = params.get("long")?.split(",") || [];
+const residents = params.get("residents")?.split(",") || [];
+const accessibility = params.get("accessibility")?.split(",") || [];
+
+if (regions.length && lats.length && lons.length) {
+  renderPoints(regions, lats, lons, residents, accessibility);
+}
 </script>
 </body>
 </html>
