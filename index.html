@@ -30,7 +30,7 @@
     padding: 0;
   }
 
-  /* Cluster color */
+  /* === Custom Cluster Colors === */
   .marker-cluster-small {
     background-color: rgba(180, 0, 0, 0.8);
     color: #fff;
@@ -65,18 +65,25 @@
 <script>
   // === Initialize Map ===
   const map = L.map("map", {
-    center: [24.7136, 46.6753],
+    center: [28.4328, 45.9700], // 🟢 Default center: Hafar Al-Batin
     zoom: 6,
     zoomControl: true,
     attributionControl: false,
   });
 
+  // === Base Layer ===
   L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
-    maxZoom: 12,
+    maxZoom: 14,
     minZoom: 3,
   }).addTo(map);
 
-  let markerLayer = L.markerClusterGroup();
+  // === Marker Cluster Config ===
+  let markerLayer = L.markerClusterGroup({
+    maxClusterRadius: 20,        // smaller value = less clustering
+    disableClusteringAtZoom: 9,  // show individual points when zoomed in
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false
+  });
   map.addLayer(markerLayer);
 
   // === Render Points ===
@@ -85,15 +92,19 @@
 
     data.forEach((row) => {
       const region = row["اسم الحي"] || "غير معروف";
-      const lat = parseFloat(row["longitude"]);  // swapped!
+      const lat = parseFloat(row["longitude"]);  // swapped intentionally per your SQL
       const lon = parseFloat(row["latitude"]);
       const access = row["امكانية الوصول الي الاماكن العامة في نطاق 800 متر"] || "0%";
       const satisfaction = row["رضا_السكان عن الخدمات البلدية"] || "0%";
 
       if (!isNaN(lat) && !isNaN(lon)) {
+        // Slight jitter to separate overlapping markers
+        const jitterLat = lat + (Math.random() - 0.5) * 0.002;
+        const jitterLon = lon + (Math.random() - 0.5) * 0.002;
+
         const satVal = parseFloat(satisfaction.replace("%", "")) || 0;
 
-        const marker = L.circleMarker([lat, lon], {
+        const marker = L.circleMarker([jitterLat, jitterLon], {
           radius: Math.min(20, 8 + satVal / 10),
           color: "#FF3333",
           fillColor: "#FF0000",
@@ -126,36 +137,21 @@
       }
     });
 
+    console.log("Total rows received:", data.length);
+    console.log("Markers rendered:", markerLayer.getLayers().length);
+
     if (markerLayer.getLayers().length > 0) {
       map.fitBounds(markerLayer.getBounds(), { padding: [30, 30] });
+      map.setZoom(Math.max(map.getZoom(), 7));
     }
   }
 
-  // === Get data from Grafana ===
+  // === Grafana PostMessage Listener ===
   window.addEventListener("message", (event) => {
     const data = event.data;
     if (!data || !Array.isArray(data)) return;
     renderPoints(data);
   });
-
-  // === Test Example (for standalone run) ===
-  const testData = [
-    {
-      "اسم الحي": "حي العليا",
-      "longitude": "24.7136",
-      "latitude": "46.6753",
-      "امكانية الوصول الي الاماكن العامة في نطاق 800 متر": "85%",
-      "رضا_السكان عن الخدمات البلدية": "90%",
-    },
-    {
-      "اسم الحي": "حي المروج",
-      "longitude": "24.7762",
-      "latitude": "46.7008",
-      "امكانية الوصول الي الاماكن العامة في نطاق 800 متر": "70%",
-      "رضا_السكان عن الخدمات البلدية": "75%",
-    },
-  ];
-  renderPoints(testData);
 </script>
 </body>
 </html>
